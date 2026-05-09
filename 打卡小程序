@@ -1,0 +1,142 @@
+import tkinter as tk
+from tkinter import messagebox, simpledialog
+import json
+import os
+from datetime import datetime
+
+# 数据文件路径
+USER_FILE = "users.json"
+RECORD_FILE = "records.json"
+
+class AttendanceApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("上班打卡系统")
+        self.root.geometry("350x200")
+        
+        # 加载已有用户数据
+        self.load_users()
+        
+        # 显示主菜单
+        self.show_main_menu()
+    
+    def load_users(self):
+        """从文件加载用户字典 {username: password}"""
+        if os.path.exists(USER_FILE):
+            with open(USER_FILE, 'r', encoding='utf-8') as f:
+                self.users = json.load(f)
+        else:
+            self.users = {}
+    
+    def save_users(self):
+        """保存用户字典到文件"""
+        with open(USER_FILE, 'w', encoding='utf-8') as f:
+            json.dump(self.users, f, ensure_ascii=False, indent=2)
+    
+    def load_records(self):
+        """加载打卡记录（列表形式）"""
+        if os.path.exists(RECORD_FILE):
+            with open(RECORD_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    
+    def save_record(self, username):
+        """追加一条打卡记录"""
+        records = self.load_records()
+        records.append({
+            "username": username,
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+        with open(RECORD_FILE, 'w', encoding='utf-8') as f:
+            json.dump(records, f, ensure_ascii=False, indent=2)
+    
+    def clear_window(self):
+        """清除当前窗口所有控件"""
+        for widget in self.root.winfo_children():
+            widget.destroy()
+    
+    def show_main_menu(self):
+        """显示主菜单"""
+        self.clear_window()
+        tk.Label(self.root, text="上班打卡系统", font=("Arial", 16)).pack(pady=10)
+        tk.Button(self.root, text="录入人员信息", width=20, height=2,
+                  command=self.show_register).pack(pady=5)
+        tk.Button(self.root, text="我要打卡", width=20, height=2,
+                  command=self.show_attendance).pack(pady=5)
+        tk.Button(self.root, text="退出", width=20, height=2,
+                  command=self.root.quit).pack(pady=5)
+    
+    def show_register(self):
+        """显示录入信息界面"""
+        self.clear_window()
+        tk.Label(self.root, text="录入新用户", font=("Arial", 14)).pack(pady=10)
+        
+        frame = tk.Frame(self.root)
+        frame.pack(pady=5)
+        
+        tk.Label(frame, text="用户名:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        entry_user = tk.Entry(frame)
+        entry_user.grid(row=0, column=1, padx=5, pady=5)
+        
+        tk.Label(frame, text="密码:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        entry_pwd = tk.Entry(frame, show="*")
+        entry_pwd.grid(row=1, column=1, padx=5, pady=5)
+        
+        def register():
+            username = entry_user.get().strip()
+            password = entry_pwd.get().strip()
+            if not username or not password:
+                messagebox.showwarning("警告", "用户名和密码不能为空")
+                return
+            if username in self.users:
+                messagebox.showerror("错误", "该用户名已存在")
+                return
+            self.users[username] = password
+            self.save_users()
+            messagebox.showinfo("成功", f"用户 {username} 录入成功！")
+            self.show_main_menu()
+        
+        tk.Button(self.root, text="确认录入", command=register).pack(pady=10)
+        tk.Button(self.root, text="返回主菜单", command=self.show_main_menu).pack()
+    
+    def show_attendance(self):
+        """显示打卡界面"""
+        self.clear_window()
+        tk.Label(self.root, text="上班打卡", font=("Arial", 14)).pack(pady=10)
+        
+        frame = tk.Frame(self.root)
+        frame.pack(pady=5)
+        
+        tk.Label(frame, text="用户名:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        entry_user = tk.Entry(frame)
+        entry_user.grid(row=0, column=1, padx=5, pady=5)
+        
+        tk.Label(frame, text="密码:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        entry_pwd = tk.Entry(frame, show="*")
+        entry_pwd.grid(row=1, column=1, padx=5, pady=5)
+        
+        def clock_in():
+            username = entry_user.get().strip()
+            password = entry_pwd.get().strip()
+            if not username or not password:
+                messagebox.showwarning("警告", "用户名和密码不能为空")
+                return
+            if username not in self.users:
+                messagebox.showerror("错误", "用户不存在，请先录入信息")
+                return
+            if self.users[username] != password:
+                messagebox.showerror("错误", "密码错误")
+                return
+            # 验证通过，记录打卡
+            self.save_record(username)
+            now = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
+            messagebox.showinfo("打卡成功", f"{username} 打卡成功！\n时间：{now}")
+            self.show_main_menu()
+        
+        tk.Button(self.root, text="确认打卡", command=clock_in).pack(pady=10)
+        tk.Button(self.root, text="返回主菜单", command=self.show_main_menu).pack()
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = AttendanceApp(root)
+    root.mainloop()
