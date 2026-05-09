@@ -1,0 +1,373 @@
+import tkinter as tk
+from tkinter import messagebox, ttk
+import json
+import hashlib
+import os
+from datetime import datetime
+
+
+# ─────────────────────────── 数据层 ───────────────────────────
+DATA_FILE = "attendance_data.json"
+
+
+def load_data() -> dict:
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"users": {}, "records": []}
+
+
+def save_data(data: dict):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+# ─────────────────────── 颜色 / 字体常量 ─────────────────────
+BG_DARK       = "#0f1117"
+BG_SURFACE    = "#1a1d27"
+BG_CARD       = "#222633"
+ACCENT        = "#4f8cff"
+ACCENT_HOVER  = "#6ea1ff"
+ACCENT_GREEN  = "#34d399"
+ACCENT_GREEN_H = "#5ee8b5"
+TEXT_PRIMARY   = "#eef0f6"
+TEXT_MUTED     = "#6b7280"
+BORDER        = "#2e3347"
+RED           = "#f87171"
+
+FONT_TITLE    = ("Microsoft YaHei UI", 22, "bold")
+FONT_SUBTITLE = ("Microsoft YaHei UI", 12)
+FONT_BODY     = ("Microsoft YaHei UI", 11)
+FONT_LABEL    = ("Microsoft YaHei UI", 10)
+FONT_BTN      = ("Microsoft YaHei UI", 12, "bold")
+FONT_CLOCK    = ("Consolas", 36, "bold")
+FONT_DATE     = ("Microsoft YaHei UI", 11)
+
+
+# ─────────────────────── 主窗口设置 ───────────────────────────
+class AttendanceApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("✦ 上班打卡系统")
+        self.geometry("520x640")
+        self.resizable(False, False)
+        self.configure(bg=BG_DARK)
+        self.data = load_data()
+
+        self.container = tk.Frame(self, bg=BG_DARK)
+        self.container.pack(fill="both", expand=True)
+
+        self.frames: dict[str, tk.Frame] = {}
+        for F in (HomePage, RegisterPage, ClockInPage, RecordPage):
+            page = F(parent=self.container, app=self)
+            self.frames[F.__name__] = page
+            page.place(relwidth=1, relheight=1)
+
+        self.show("HomePage")
+
+    def show(self, name: str):
+        frame = self.frames[name]
+        frame.tkraise()
+        if hasattr(frame, "on_show"):
+            frame.on_show()
+
+
+# ─────────────────────── 通用小组件 ───────────────────────────
+class StyledEntry(tk.Frame):
+    """带标签和圆角感的输入框"""
+    def __init__(self, parent, label_text, show=None, **kw):
+        super().__init__(parent, bg=BG_CARD)
+        lbl = tk.Label(self, text=label_text, font=FONT_LABEL,
+                        fg=TEXT_MUTED, bg=BG_CARD, anchor="w")
+        lbl.pack(fill="x", padx=2, pady=(6, 2))
+        self.entry = tk.Entry(self, font=FONT_BODY, fg=TEXT_PRIMARY,
+                              bg=BG_SURFACE, relief="flat",
+                              insertbackground=TEXT_PRIMARY, show=show, **kw)
+        self.entry.pack(fill="x", ipady=8, padx=2, pady=(0, 6))
+
+    def get(self):
+        return self.entry.get().strip()
+
+    def clear(self):
+        self.entry.delete(0, tk.END)
+
+
+class AccentButton(tk.Label):
+    """自定义风格按钮"""
+    def __init__(self, parent, text, color=ACCENT, hover=None, command=None, **kw):
+        self.color = color
+        self.hover = hover or color
+        self._cmd = command
+        super().__init__(parent, text=text, font=FONT_BTN,
+                         fg="white", bg=color, cursor="hand2",
+                         padx=28, pady=12, **kw)
+        self.bind("<Enter>", lambda e: self.config(bg=self.hover))
+        self.bind("<Leave>", lambda e: self.config(bg=self.color))
+        if command:
+            self.bind("<Button-1>", lambda e: command())
+
+
+# ─────────────────────── 首页 ─────────────────────────────────
+class HomePage(tk.Frame):
+    def __init__(self, parent, app: AttendanceApp):
+        super().__init__(parent, bg=BG_DARK)
+        self.app = app
+
+        # 顶部时钟区域
+        self.clock_frame = tk.Frame(self, bg=BG_DARK)
+        self.clock_frame.pack(pady=(60, 10))
+
+        self.time_label = tk.Label(self.clock_frame, font=FONT_CLOCK,
+                                    fg=ACCENT, bg=BG_DARK, text="00:00:00")
+        self.time_label.pack()
+
+        self.date_label = tk.Label(self.clock_frame, font=FONT_DATE,
+                                    fg=TEXT_MUTED, bg=BG_DARK, text="")
+        self.date_label.pack(pady=(4, 0))
+
+        # 标题
+        tk.Label(self, text="上班打卡系统", font=FONT_TITLE,
+                 fg=TEXT_PRIMARY, bg=BG_DARK).pack(pady=(30, 4))
+        tk.Label(self, text="选择你要进行的操作", font=FONT_SUBTITLE,
+                 fg=TEXT_MUTED, bg=BG_DARK).pack(pady=(0, 40))
+
+        # 按钮区域
+        btn_frame = tk.Frame(self, bg=BG_DARK)
+        btn_frame.pack()
+
+        AccentButton(btn_frame, "  📋  录入信息  ", color="#6366f1",
+                     hover="#818cf8",
+                     command=lambda: app.show("RegisterPage")).pack(pady=10, ipadx=40)
+
+        AccentButton(btn_frame, "  ⏰  我要打卡  ", color=ACCENT_GREEN,
+                     hover=ACCENT_GREEN_H,
+                     command=lambda: app.show("ClockInPage")).pack(pady=10, ipadx=40)
+
+        AccentButton(btn_frame, "  📊  打卡记录  ", color="#f59e0b",
+                     hover="#fbbf24",
+                     command=lambda: app.show("RecordPage")).pack(pady=10, ipadx=40)
+
+        self._tick()
+
+    def _tick(self):
+        now = datetime.now()
+        self.time_label.config(text=now.strftime("%H:%M:%S"))
+        weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        self.date_label.config(text=now.strftime(f"%Y 年 %m 月 %d 日  {weekdays[now.weekday()]}"))
+        self.after(1000, self._tick)
+
+
+# ─────────────────────── 注册页 ───────────────────────────────
+class RegisterPage(tk.Frame):
+    def __init__(self, parent, app: AttendanceApp):
+        super().__init__(parent, bg=BG_DARK)
+        self.app = app
+
+        # 顶栏
+        top = tk.Frame(self, bg=BG_DARK)
+        top.pack(fill="x", padx=20, pady=(24, 0))
+        back = tk.Label(top, text="← 返回", font=FONT_BODY,
+                        fg=ACCENT, bg=BG_DARK, cursor="hand2")
+        back.pack(side="left")
+        back.bind("<Button-1>", lambda e: app.show("HomePage"))
+
+        tk.Label(self, text="录入人员信息", font=FONT_TITLE,
+                 fg=TEXT_PRIMARY, bg=BG_DARK).pack(pady=(40, 6))
+        tk.Label(self, text="请填写用户名和密码完成注册", font=FONT_SUBTITLE,
+                 fg=TEXT_MUTED, bg=BG_DARK).pack(pady=(0, 30))
+
+        # 卡片
+        card = tk.Frame(self, bg=BG_CARD, padx=24, pady=20)
+        card.pack(padx=40, fill="x")
+
+        self.user_entry = StyledEntry(card, "用户名")
+        self.user_entry.pack(fill="x", pady=(0, 6))
+
+        self.pass_entry = StyledEntry(card, "密码", show="●")
+        self.pass_entry.pack(fill="x", pady=(0, 6))
+
+        self.confirm_entry = StyledEntry(card, "确认密码", show="●")
+        self.confirm_entry.pack(fill="x", pady=(0, 16))
+
+        AccentButton(card, "确认注册", color=ACCENT, hover=ACCENT_HOVER,
+                     command=self._register).pack(fill="x", ipady=6)
+
+        self.msg_label = tk.Label(self, text="", font=FONT_BODY,
+                                   fg=ACCENT_GREEN, bg=BG_DARK)
+        self.msg_label.pack(pady=(16, 0))
+
+    def _register(self):
+        username = self.user_entry.get()
+        password = self.pass_entry.get()
+        confirm  = self.confirm_entry.get()
+
+        if not username or not password:
+            self._msg("用户名和密码不能为空", RED)
+            return
+        if len(username) < 2:
+            self._msg("用户名至少 2 个字符", RED)
+            return
+        if len(password) < 4:
+            self._msg("密码至少 4 位", RED)
+            return
+        if password != confirm:
+            self._msg("两次密码不一致", RED)
+            return
+        if username in self.app.data["users"]:
+            self._msg("该用户名已存在", RED)
+            return
+
+        self.app.data["users"][username] = hash_password(password)
+        save_data(self.app.data)
+        self._msg(f"「{username}」注册成功！", ACCENT_GREEN)
+        self.user_entry.clear()
+        self.pass_entry.clear()
+        self.confirm_entry.clear()
+
+    def _msg(self, text, color):
+        self.msg_label.config(text=text, fg=color)
+
+    def on_show(self):
+        self.msg_label.config(text="")
+        self.user_entry.clear()
+        self.pass_entry.clear()
+        self.confirm_entry.clear()
+
+
+# ─────────────────────── 打卡页 ───────────────────────────────
+class ClockInPage(tk.Frame):
+    def __init__(self, parent, app: AttendanceApp):
+        super().__init__(parent, bg=BG_DARK)
+        self.app = app
+
+        top = tk.Frame(self, bg=BG_DARK)
+        top.pack(fill="x", padx=20, pady=(24, 0))
+        back = tk.Label(top, text="← 返回", font=FONT_BODY,
+                        fg=ACCENT, bg=BG_DARK, cursor="hand2")
+        back.pack(side="left")
+        back.bind("<Button-1>", lambda e: app.show("HomePage"))
+
+        tk.Label(self, text="员工打卡", font=FONT_TITLE,
+                 fg=TEXT_PRIMARY, bg=BG_DARK).pack(pady=(40, 6))
+        tk.Label(self, text="输入账号密码完成打卡", font=FONT_SUBTITLE,
+                 fg=TEXT_MUTED, bg=BG_DARK).pack(pady=(0, 30))
+
+        card = tk.Frame(self, bg=BG_CARD, padx=24, pady=20)
+        card.pack(padx=40, fill="x")
+
+        self.user_entry = StyledEntry(card, "用户名")
+        self.user_entry.pack(fill="x", pady=(0, 6))
+
+        self.pass_entry = StyledEntry(card, "密码", show="●")
+        self.pass_entry.pack(fill="x", pady=(0, 16))
+
+        AccentButton(card, "立即打卡", color=ACCENT_GREEN,
+                     hover=ACCENT_GREEN_H,
+                     command=self._clock_in).pack(fill="x", ipady=6)
+
+        self.msg_label = tk.Label(self, text="", font=FONT_BODY,
+                                   fg=ACCENT_GREEN, bg=BG_DARK)
+        self.msg_label.pack(pady=(16, 0))
+
+    def _clock_in(self):
+        username = self.user_entry.get()
+        password = self.pass_entry.get()
+
+        if not username or not password:
+            self._msg("请输入用户名和密码", RED)
+            return
+
+        users = self.app.data.get("users", {})
+        if username not in users:
+            self._msg("用户不存在，请先注册", RED)
+            return
+        if users[username] != hash_password(password):
+            self._msg("密码错误", RED)
+            return
+
+        now = datetime.now()
+        record = {
+            "username": username,
+            "time": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "weekday": ["星期一", "星期二", "星期三", "星期四",
+                        "星期五", "星期六", "星期日"][now.weekday()]
+        }
+        self.app.data.setdefault("records", []).append(record)
+        save_data(self.app.data)
+
+        self._msg(f"打卡成功！ {now.strftime('%H:%M:%S')}", ACCENT_GREEN)
+        self.user_entry.clear()
+        self.pass_entry.clear()
+
+    def _msg(self, text, color):
+        self.msg_label.config(text=text, fg=color)
+
+    def on_show(self):
+        self.msg_label.config(text="")
+        self.user_entry.clear()
+        self.pass_entry.clear()
+
+
+# ─────────────────────── 记录页 ───────────────────────────────
+class RecordPage(tk.Frame):
+    def __init__(self, parent, app: AttendanceApp):
+        super().__init__(parent, bg=BG_DARK)
+        self.app = app
+
+        top = tk.Frame(self, bg=BG_DARK)
+        top.pack(fill="x", padx=20, pady=(24, 0))
+        back = tk.Label(top, text="← 返回", font=FONT_BODY,
+                        fg=ACCENT, bg=BG_DARK, cursor="hand2")
+        back.pack(side="left")
+        back.bind("<Button-1>", lambda e: app.show("HomePage"))
+
+        tk.Label(self, text="打卡记录", font=FONT_TITLE,
+                 fg=TEXT_PRIMARY, bg=BG_DARK).pack(pady=(30, 20))
+
+        # 表格容器
+        table_frame = tk.Frame(self, bg=BG_DARK)
+        table_frame.pack(padx=30, fill="both", expand=True)
+
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("Treeview",
+                        background=BG_SURFACE,
+                        foreground=TEXT_PRIMARY,
+                        fieldbackground=BG_SURFACE,
+                        rowheight=36,
+                        font=FONT_BODY)
+        style.configure("Treeview.Heading",
+                        background=BG_CARD,
+                        foreground=TEXT_MUTED,
+                        font=FONT_LABEL)
+        style.map("Treeview", background=[("selected", ACCENT)])
+
+        cols = ("序号", "用户名", "打卡时间", "星期")
+        self.tree = ttk.Treeview(table_frame, columns=cols, show="headings", height=18)
+        for c, w in zip(cols, (50, 100, 200, 80)):
+            self.tree.heading(c, text=c)
+            self.tree.column(c, width=w, anchor="center")
+        self.tree.pack(fill="both", expand=True)
+
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+
+    def on_show(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        records = self.app.data.get("records", [])
+        for i, r in enumerate(reversed(records), 1):
+            self.tree.insert("", "end", values=(
+                i, r["username"], r["time"], r.get("weekday", "")
+            ))
+
+
+# ─────────────────────── 启动 ─────────────────────────────────
+if __name__ == "__main__":
+    app = AttendanceApp()
+    app.mainloop()
